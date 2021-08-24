@@ -45,13 +45,13 @@ class DXDataset(dgl.data.DGLDataset):
         g = dgl.graph(self.DX_ALGO[pz[110].item()])  # edges
         def parse_op(idx):
             i = (6 - idx) * 17
-            env_R = (pz[i:i + 4] + 0.5) * 0.01  # 0...100 shift & scale to 0.005-0.995
-            env_L = (pz[i + 4:i + 8] + 0.5) * 0.01  # 0.005...0.995
-            gain = pz[14] * 0.01  # 0.005...0.995
-            mode = pz[i + 15] % 2  # 0,1
+            env_R = pz[i:i + 4] * 0.01  # 0...99 scale to 0.00...0.99
+            env_L = pz[i + 4:i + 8] * 0.01
+            gain = pz[14] * 0.01
+            mode = pz[i + 15] % 2  # boolean
             coarse = torch.floor(pz[i + 15] * 0.5)  # 0...31
             fine = pz[i + 16]  # 0...99
-            tune = torch.floor((pz[i + 12] + 0.5) / 15)  # 0.33...0.97
+            tune = torch.floor(pz[i + 12] / 15)  # 0...14/15
             if mode == 0:  # ratio mode
                 if coarse == 0:
                     coarse = torch.tensor(0.5)  # ratio=0.5 when coarse=0, as DX's design
