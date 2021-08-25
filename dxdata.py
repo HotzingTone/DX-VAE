@@ -61,9 +61,9 @@ class DXDataset(dgl.data.DGLDataset):
                 freq = (coarse % 4 + fine * 0.01) / 4  # already log as DX's design
             op_params = torch.cat([env_R, env_L,
                                    gain.unsqueeze(0),
-                                   mode.unsqueeze(0),
                                    freq.unsqueeze(0),
-                                   tune.unsqueeze(0)])
+                                   tune.unsqueeze(0),
+                                   mode.unsqueeze(0)])
             return op_params
         pz_params = torch.stack([parse_op(idx) for idx in range(1, 7)])  # [6_operators, 12_params]
         g.ndata['params'] = torch.cat([torch.zeros(1, 12), pz_params])  # features zero-padded for node_0
