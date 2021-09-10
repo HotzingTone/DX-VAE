@@ -1,4 +1,4 @@
-from dxdata import DXDataset, to_syx
+from dxdata import DXDataset
 from model import DXVAE
 import torch
 
@@ -52,26 +52,22 @@ def print_data(G):
 
 
 if __name__ == '__main__':
-    # DXDataset(raw_dir='DX_data')
+    DXDataset(raw_dir='DX_data')
     G = DXDataset(raw_dir='DX_data')[0]
-    GG = G[30:31]
-    print_data(GG)
 
     model = DXVAE()
-
-    PATH = 'test_softmax'
-
+    PATH = 'test'
     model.load_state_dict(torch.load(PATH))
+    model.train(G, 500)
+    torch.save(model.state_dict(), PATH)
 
-    # model.train(G, 100)
-    # torch.save(model.state_dict(), PATH)
-
-    # model.forward(G[17:19])
-
-    G_re = model.encode_decode(GG)  # try stochastic=True
+    # model.forward(G[17:18])
     # G_gen = model.generate(2)
-    print('\n')
-    print_data(G_re)
+
+    g = G[17:18]
+    print_data(g)
+    g_re = model.encode_decode(g)  # try stochastic=True
+    print_data(g_re)
 
     # to_syx(G_re)
 
@@ -82,8 +78,9 @@ if __name__ == '__main__':
 #  + stochastic (logit/prob)
 #  RNN for env?
 #  RNN for mode->coarse->fine?
-#  Softmax for freq? + log_freq for MSE?
 #  freq_mode as gate?
 #  levels for edge weights
 #  param layer separation
-#  sparse tensor for one_hot
+#  training plot
+#  try more layers
+#  try LSTM

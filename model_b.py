@@ -7,29 +7,31 @@ from torch.distributions.kl import kl_divergence
 import dgl
 
 
-class DXVAE(nn.Module):
-    def __init__(self, n_nodes=7, n_params=12, size_hidden=512, size_latent=128):
+class DXVAE_1hot(nn.Module):
+    def __init__(self, n_nodes=7, n_params=13, size_1hot=1049, size_hidden=512, size_latent=128):
         super().__init__()
         self.n_nodes = n_nodes  # total number of nodes
-        self.n_params = n_params  # number of node parameters
+        self.size_1hot = size_1hot  # node parameters size in one-hot
+        self.n_params = n_params  # number of parameters for each node
         self.size_hidden = size_hidden  # size of hidden state for a node
         self.size_latent = size_latent  # size of latent z
-        self.zero_params = torch.zeros(n_params)  # padding params for node_0
+        self.zero_params = torch.zeros(n_params).long()  # padding params for node_0
+        self.zero_1hot = torch.zeros(size_1hot)  # padding one_hot params for node_0
         self.zero_hidden = torch.zeros(size_hidden)  # padding hidden state for propagation
         self.hidden = None  # hidden state container
         self.p_dist = Normal(0., 1.)  # prior distribution
 
-        # encoder
-        self.propagator_encode = nn.GRUCell(n_params, size_hidden)  # encoder propagator
-        self.looper_encode = nn.GRUCell(n_params, size_hidden)  # encoder self-looper
+        # encode
+        self.propagator_encode = nn.GRUCell(size_1hot, size_hidden)  # encoder propagator
+        self.looper_encode = nn.GRUCell(size_1hot, size_hidden)  # encoder self-looper
         self.h_to_mu = nn.Linear(size_hidden, size_latent)  # latent mean
         self.h_to_std = nn.Sequential(
             nn.Linear(size_hidden, size_latent),
             nn.Softplus())  # softplus to ensure positive standard deviation
 
-        # decoder
-        self.propagator_decode = nn.GRUCell(n_params, size_hidden)  # decoder propagator
-        self.looper_decode = nn.GRUCell(n_params, size_hidden)  # decoder self-looper
+        # decode
+        self.propagator_decode = nn.GRUCell(size_1hot, size_hidden)  # decoder propagator
+        self.looper_decode = nn.GRUCell(size_1hot, size_hidden)  # decoder self-looper
         self.z_to_h = nn.Sequential(
             nn.Linear(size_latent, size_hidden),
             nn.Tanh()
@@ -37,7 +39,7 @@ class DXVAE(nn.Module):
         self.h_to_params = nn.Sequential(
             nn.Linear(size_hidden, size_hidden * 2),
             nn.ReLU(),
-            nn.Linear(size_hidden * 2, n_params),
+            nn.Linear(size_hidden * 2, size_1hot),
         )  # node hidden state to parameters
         self.h_to_edge_self = nn.Sequential(
             nn.Linear(size_hidden, size_hidden * 2),
@@ -65,6 +67,56 @@ class DXVAE(nn.Module):
         Hv = torch.stack([h[v] for h in self.hidden])
         return Hv
 
+    def logit_to_prob(self, Xi_logit):
+        Xi_prob = torch.cat([F.log_softmax(Xi_logit[:, :2], 1),
+                             F.log_softmax(Xi_logit[:, 2:34], 1),
+                             F.log_softmax(Xi_logit[:, 34:134], 1),
+                             F.log_softmax(Xi_logit[:, 134:149], 1),
+                             F.log_softmax(Xi_logit[:, 149:249], 1),
+                             F.log_softmax(Xi_logit[:, 249:349], 1),
+                             F.log_softmax(Xi_logit[:, 349:449], 1),
+                             F.log_softmax(Xi_logit[:, 449:549], 1),
+                             F.log_softmax(Xi_logit[:, 549:649], 1),
+                             F.log_softmax(Xi_logit[:, 649:749], 1),
+                             F.log_softmax(Xi_logit[:, 749:849], 1),
+                             F.log_softmax(Xi_logit[:, 849:949], 1),
+                             F.log_softmax(Xi_logit[:, 949:], 1)],
+                            dim=1)
+        return Xi_prob
+
+    def logit_to_params(self, Xi_logit):
+        Xi = torch.stack([Xi_logit[:, :2].argmax(1),  # mode
+                          Xi_logit[:, 2:34].argmax(1),  # coarse
+                          Xi_logit[:, 34:134].argmax(1),  # fine
+                          Xi_logit[:, 134:149].argmax(1),  # tune
+                          Xi_logit[:, 149:249].argmax(1),  # R1
+                          Xi_logit[:, 249:349].argmax(1),  # R2
+                          Xi_logit[:, 349:449].argmax(1),  # R3
+                          Xi_logit[:, 449:549].argmax(1),  # R4
+                          Xi_logit[:, 549:649].argmax(1),  # L1
+                          Xi_logit[:, 649:749].argmax(1),  # L2
+                          Xi_logit[:, 749:849].argmax(1),  # L3
+                          Xi_logit[:, 849:949].argmax(1),  # L4
+                          Xi_logit[:, 949:].argmax(1)]).T  # gain
+        return Xi
+
+    def params_to_1hot(self, Xi):
+        Xi_1hot = torch.cat([F.one_hot(Xi[:, 0], 2),  # mode
+                             F.one_hot(Xi[:, 1], 32),  # coarse
+                             F.one_hot(Xi[:, 2], 100),  # fine
+                             F.one_hot(Xi[:, 3], 15),  # tune
+                             F.one_hot(Xi[:, 4], 100),  # R1
+                             F.one_hot(Xi[:, 5], 100),  # R2
+                             F.one_hot(Xi[:, 6], 100),  # R3
+                             F.one_hot(Xi[:, 7], 100),  # R4
+                             F.one_hot(Xi[:, 8], 100),  # L1
+                             F.one_hot(Xi[:, 9], 100),  # L2
+                             F.one_hot(Xi[:, 10], 100),  # L3
+                             F.one_hot(Xi[:, 11], 100),  # L4
+                             F.one_hot(Xi[:, 12], 100)],  # gain
+                            dim=1)
+        return Xi_1hot.float()
+
     def _propagate(self, G, v, H_in=None, encode=False):
         if len(G) == 0:
             return
@@ -75,12 +127,12 @@ class DXVAE(nn.Module):
         else:
             propagator = self.propagator_decode
             looper = self.looper_decode
-        # get X and X_loop
-        X = torch.stack([g.ndata['params'][v] for g in G])  # (size_batch, n_params)
-        X_loop = torch.zeros_like(X)
+        # get X_1hot and X_1hot_loop
+        X_1hot = torch.stack([g.ndata['params_1hot'][v] for g in G])  # (size_batch, size_1hot)
+        X_1hot_loop = torch.zeros_like(X_1hot)
         for idx, g in enumerate(G):
             if v in g.successors(v):  # if self-loop
-                X_loop[idx] = X[idx]  # copy x to x_loop
+                X_1hot_loop[idx] = X_1hot[idx]  # copy x to x_loop
         # compute H_in
         if H_in is None:
             if encode:  # encode from leaves
@@ -115,9 +167,9 @@ class DXVAE(nn.Module):
                     ) for idx, g in enumerate(G)])  # (size_batch, n_node - v - 1, size_hidden)
             H_in = torch.cat([H_forth, H_back], 2)  # (size_batch, n_node - v - 1, size_hidden * 2)
             H_in = (self.gate(H_in) * self.mapper(H_in)).sum(1)  # (size_batch, size_hidden)
-        # combine with X
-        Hv = propagator(X, H_in)  # (size_batch, size_hidden)
-        Hv = looper(X_loop, Hv)  # (size_batch, size_hidden)
+        # combine with X_1hot
+        Hv = propagator(X_1hot, H_in)  # (size_batch, size_hidden)
+        Hv = looper(X_1hot_loop, Hv)  # (size_batch, size_hidden)
         # store Hv into G
         for idx in range(len(G)):
             self.hidden[idx][v] = Hv[idx]
@@ -139,22 +191,26 @@ class DXVAE(nn.Module):
         return q_dist
 
     def decode(self, z):
-        # make new graphs with node_0 having X0 & H0
+        # make new graphs with node_0 having X0, X0_1hot & H0
         G = [dgl.graph(([], [])) for _ in range(len(z))]
         for g in G:
-            g.add_nodes(1, {'params': self.zero_params.unsqueeze(0)})  # add X0
+            g.add_nodes(1, {'params': self.zero_params.unsqueeze(0),
+                            'params_1hot': self.zero_1hot.unsqueeze(0)})  # add X0, X0_1hot
         H_init = self.z_to_h(z)
-        self._propagate(G, 0, H_init)  # compute H0 given X0 & H_init
+        self._propagate(G, 0, H_init)  # compute H0 given X0_1hot & H_init
 
         # generate nodes/edges 1-by-1 from 1 upwards
         for vi in range(1, self.n_nodes):
             # generate parameters Xi from Hi-1
             Hg = self._get_hidden(vi - 1)
-            Xi = self.h_to_params(Hg)
-            torch.sigmoid_(Xi[:, 11])
+            Xi_logit = self.h_to_params(Hg)
+            Xi = self.logit_to_params(Xi_logit)
+            Xi_1hot = self.params_to_1hot(Xi)
             for idx, g in enumerate(G):
-                g.add_nodes(1, {'params': Xi[idx].unsqueeze(0)})
+                g.add_nodes(1, {'params': Xi[idx].unsqueeze(0),
+                                'params_1hot': Xi_1hot[idx].unsqueeze(0)})
             Hi = self._propagate(G, vi)
+
             # generate self-loop-edge
             Ei_self = self.h_to_edge_self(Hi) > 0.5  # (size_batch, 1) boolean
             for idx, g in enumerate(G):
@@ -175,8 +231,8 @@ class DXVAE(nn.Module):
 
         return G
 
-    def encode_decode(self, G_true, stochastic=False):
-        q_dist = self.encode(G_true)
+    def encode_decode(self, G, stochastic=False):
+        q_dist = self.encode(G)
         if stochastic:
             z = q_dist.sample()
         else:
@@ -190,45 +246,47 @@ class DXVAE(nn.Module):
         G = self.decode(sample)
         return G
 
-    def loss(self, q_dist, G_true,
-             w_mode=5, w_freq=100, w_tune=0.1, w_edges=50, w_kld=0.005):
+    def loss(self, q_dist, G_true):
         # compute H_init from latent
         if self.training:
             z = q_dist.sample()
         else:
             z = q_dist.loc
         H_init = self.z_to_h(z)
-        # make new graphs with node_0 having X0 & H0
-        G = [dgl.graph(([], [])) for _ in range(len(z))]
+        # make new graphs with node_0 having X0, X0_1hot & H0
+        size_batch = len(z)
+        G = [dgl.graph(([], [])) for _ in range(size_batch)]
         for g in G:
-            g.add_nodes(1, {'params': self.zero_params.unsqueeze(0)})  # add X0
-        self._propagate(G, 0, H_init)  # compute H0 given X0 & H_init
+            g.add_nodes(1, {  # 'params': self.zero_params.unsqueeze(0),
+                'params_1hot': self.zero_1hot.unsqueeze(0)})  # add X0, X0_1hot
+        self._propagate(G, 0, H_init)  # compute H0 given X0_1hot & H_init
 
         # get true parameters and adjacency matrix
-        param_true = torch.stack(
+        params_true = torch.stack(
             [g_true.ndata['params']
              for g_true in G_true])  # (size_batch, n_nodes, n_params)
+        params_1hot_true = torch.stack(
+            [g_true.ndata['params_1hot']
+             for g_true in G_true])  # (size_batch, n_nodes, size_1hot)
         adj_true = torch.stack(
             [g_true.adj().to_dense()
              for g_true in G_true])  # (size_batch, n_nodes, n_nodes)
+
         # teacher forcing nodes/edges 1-by-1 and compute/accumulate losses
         loss_params = 0
         loss_edges = 0
         for vi in range(1, self.n_nodes):
-            # generate parameters Xi from Hi-1
+            # generate param probabilities Xi_prob from Hi-1
             Hg = self._get_hidden(vi - 1)
-            Xi = self.h_to_params(Hg)
-            # teacher forcing true parameters Xi_true to compute Hi
-            Xi_true = param_true[:, vi, :]
+            Xi_logit = self.h_to_params(Hg)
+            Xi_prob = self.logit_to_prob(Xi_logit)
+            # teacher forcing true one-hot params Xi_1hot_true to compute Hi
+            Xi_1hot_true = params_1hot_true[:, vi, :]  # (graph, node, 1hot)
             for idx, g in enumerate(G):
-                g.add_nodes(1, {'params': Xi_true[idx].unsqueeze(0)})
+                g.add_nodes(1, {'params_1hot': Xi_1hot_true[idx].unsqueeze(0)})
             Hi = self._propagate(G, vi)
             # compute parameter loss
-            l_env = F.mse_loss(Xi[:, :9], Xi_true[:, :9], reduction='none').mean(0).sum()
-            l_mode = F.binary_cross_entropy(torch.sigmoid(Xi[:, 9]), Xi_true[:, 9], reduction='mean')
-            l_freq = F.mse_loss(Xi[:, 10], Xi_true[:, 10], reduction='mean')
-            l_tune = F.mse_loss(Xi[:, 11], Xi_true[:, 11], reduction='mean')
-            loss_params += l_env + l_mode * w_mode + l_freq * w_freq + l_tune * w_tune
+            loss_params += -(Xi_prob * Xi_1hot_true).sum(1).mean(0)  # negative log-likelihood
             # generate self-loop-edge probability
             Ei_self = self.h_to_edge_self(Hi)
             # teacher forcing Ei_self_true to update Hi
@@ -267,7 +325,7 @@ class DXVAE(nn.Module):
 
         kld = kl_divergence(self.p_dist, q_dist).mean(0).sum()
 
-        return loss_params + loss_edges * w_edges + kld * w_kld, loss_params, loss_edges * w_edges, kld * w_kld
+        return loss_params + loss_edges + kld, loss_params, loss_edges, kld
 
     def forward(self, G_true):
         q_dist = self.encode(G_true)

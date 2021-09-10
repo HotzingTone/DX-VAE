@@ -7,7 +7,7 @@ from torch.distributions.kl import kl_divergence
 import dgl
 
 
-class DXVAE(nn.Module):
+class DXVAE_a(nn.Module):
     def __init__(self, n_nodes=7, n_params=12, size_hidden=512, size_latent=128):
         super().__init__()
         self.n_nodes = n_nodes  # total number of nodes
@@ -190,8 +190,7 @@ class DXVAE(nn.Module):
         G = self.decode(sample)
         return G
 
-    def loss(self, q_dist, G_true,
-             w_mode=5, w_freq=100, w_tune=0.1, w_edges=50, w_kld=0.005):
+    def loss(self, q_dist, G_true, w1=10, w2=0.2, w3=1, w4=1):
         # compute H_init from latent
         if self.training:
             z = q_dist.sample()
@@ -224,11 +223,9 @@ class DXVAE(nn.Module):
                 g.add_nodes(1, {'params': Xi_true[idx].unsqueeze(0)})
             Hi = self._propagate(G, vi)
             # compute parameter loss
-            l_env = F.mse_loss(Xi[:, :9], Xi_true[:, :9], reduction='none').mean(0).sum()
-            l_mode = F.binary_cross_entropy(torch.sigmoid(Xi[:, 9]), Xi_true[:, 9], reduction='mean')
-            l_freq = F.mse_loss(Xi[:, 10], Xi_true[:, 10], reduction='mean')
-            l_tune = F.mse_loss(Xi[:, 11], Xi_true[:, 11], reduction='mean')
-            loss_params += l_env + l_mode * w_mode + l_freq * w_freq + l_tune * w_tune
+            mse = F.mse_loss(Xi[:, :11], Xi_true[:, :11], reduction='none').mean(0).sum()
+            bce = F.binary_cross_entropy(torch.sigmoid(Xi[:, 11]), Xi_true[:, 11], reduction='mean')
+            loss_params += mse + bce * w1  # bce for freq mode, having higher weight
             # generate self-loop-edge probability
             Ei_self = self.h_to_edge_self(Hi)
             # teacher forcing Ei_self_true to update Hi
@@ -267,7 +264,7 @@ class DXVAE(nn.Module):
 
         kld = kl_divergence(self.p_dist, q_dist).mean(0).sum()
 
-        return loss_params + loss_edges * w_edges + kld * w_kld, loss_params, loss_edges * w_edges, kld * w_kld
+        return loss_params * w2 + loss_edges * w3 + kld * w4, loss_params * w2, loss_edges * w3, kld * w4
 
     def forward(self, G_true):
         q_dist = self.encode(G_true)

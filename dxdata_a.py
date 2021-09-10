@@ -2,11 +2,10 @@ import os
 from pathlib import Path
 import mido
 import torch
-import torch.nn.functional as F
 import dgl
 
 
-class DXDataset(dgl.data.DGLDataset):
+class DXDataset_a(dgl.data.DGLDataset):
     def __init__(self, raw_dir=None, save_dir=None):
         self.DX_ALGO = {0: ([1, 2, 3, 4, 5, 6, 6], [0, 1, 0, 3, 4, 5, 6]),
                         1: ([1, 2, 2, 3, 4, 5, 6], [0, 1, 2, 0, 3, 4, 5]),
@@ -44,11 +43,10 @@ class DXDataset(dgl.data.DGLDataset):
 
     def _make_graph(self, pz):
         g = dgl.graph(self.DX_ALGO[pz[110].item()])  # edges
-
         def parse_op(idx):
             i = (6 - idx) * 17
             envelop = pz[i:i + 8] * 0.01  # 0...99 scale to 0.00...0.99
-            gain = pz[i + 14] * 0.01  # 0.00...0.99
+            gain = pz[14] * 0.01  # 0.00...0.99
             mode = pz[i + 15] % 2  # boolean
             coarse = torch.floor(pz[i + 15] * 0.5)  # 0...31
             fine = pz[i + 16]  # 0...99
@@ -60,14 +58,12 @@ class DXDataset(dgl.data.DGLDataset):
                 freq = torch.log(freq_add * 2) / torch.log(torch.tensor(128.))  # log normalization
             else:  # fixed mode
                 freq = (coarse % 4 + fine * 0.01) / 4  # already log as DX's design
-            op_params = torch.cat([gain.unsqueeze(0),
-                                   envelop,
-                                   mode.unsqueeze(0),
+            op_params = torch.cat([envelop,
+                                   gain.unsqueeze(0),
                                    freq.unsqueeze(0),
                                    tune.unsqueeze(0),
-                                   ])
+                                   mode.unsqueeze(0)])
             return op_params
-
         pz_params = torch.stack([parse_op(idx) for idx in range(1, 7)])  # [6_operators, 12_params]
         g.ndata['params'] = torch.cat([torch.zeros(1, 12), pz_params])  # features zero-padded for node_0
         return g
@@ -98,46 +94,45 @@ class DXDataset(dgl.data.DGLDataset):
     def has_cache(self):
         return os.path.exists(self.save_path)
 
+def to_syx(G, file='gen_patch.syx'):
+    data_pz_tail = [99, 99, 99, 99,
+                    50, 50, 50, 50,
+                    0, 15, 0, 0, 0,
+                    0, 1, 24, 0, 0,
+                    0, 0, 0, 0,
+                    0, 0, 0, 0]
+    data_head = [67, 0, 9, 32, 0]
+    data_tail = [88]
+    data_32pz = []
+    for i, g in enumerate(G):
+        params_graph = g.ndata['params']
+        params_pz = []
+        for idx in range(6, 0, -1):  # todo make a clamp
+            params_node = params_graph[idx]
 
-# def to_syx(G, file='gen_patch.syx'):
-#     data_pz_tail = [99, 99, 99, 99,
-#                     50, 50, 50, 50,
-#                     0, 15, 0, 0, 0,
-#                     0, 1, 24, 0, 0,
-#                     0, 0, 0, 0,
-#                     0, 0, 0, 0]
-#     data_head = [67, 0, 9, 32, 0]
-#     data_tail = [88]
-#     data_32pz = []
-#     for i, g in enumerate(G):
-#         params_graph = g.ndata['params']
-#         params_pz = []
-#         for idx in range(6, 0, -1):  # todo make a clamp
-#             params_node = params_graph[idx]
-#
-#             mode_op = params_node[0].int().tolist()
-#             coarse_op = params_node[1].int().tolist()
-#             fine_op = params_node[2].int().tolist()
-#             tune_op = params_node[3].int().tolist()
-#             env_op = params_node[4:12].int().tolist()
-#             level_op = params_node[12].int().tolist()
-#             params_op = env_op + [0, 0, 0, 0] + \
-#                         [tune_op * 8] + [0] + \
-#                         [level_op] + \
-#                         [coarse_op * 2 + mode_op] + \
-#                         [fine_op]
-#             params_pz.extend(params_op)
-#
-#         data_pz = params_pz + data_pz_tail
-#         data_32pz.extend(data_pz)
-#
-#     data = data_head + data_32pz + data_tail
-#     msg = mido.Message('sysex', data=data)
-#
-#     mido.write_syx_file(file, [msg])
+            mode_op = params_node[0].int().tolist()
+            coarse_op = params_node[1].int().tolist()
+            fine_op = params_node[2].int().tolist()
+            tune_op = params_node[3].int().tolist()
+            env_op = params_node[4:12].int().tolist()
+            level_op = params_node[12].int().tolist()
+            params_op = env_op + [0, 0, 0, 0] + \
+                        [tune_op * 8] + [0] + \
+                        [level_op] + \
+                        [coarse_op * 2 + mode_op] + \
+                        [fine_op]
+            params_pz.extend(params_op)
+
+        data_pz = params_pz + data_pz_tail
+        data_32pz.extend(data_pz)
+
+    data = data_head + data_32pz + data_tail
+    msg = mido.Message('sysex', data=data)
+
+    mido.write_syx_file(file, [msg])
 
 
 if __name__ == '__main__':
-    dataset = DXDataset(raw_dir='DX_data')
+    dataset = DXDataset_a(raw_dir='DX_data')
     G = dataset[0]
     # dataset.to_presets(g)
