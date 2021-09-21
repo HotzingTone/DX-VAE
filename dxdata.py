@@ -5,8 +5,137 @@ import torch
 import torch.nn.functional as F
 import dgl
 
+'''
+byte             bit #
+ #     6   5   4   3   2   1   0   param A       range  param B       range
+----  --- --- --- --- --- --- ---  ------------  -----  ------------  -----
+  0                R1              OP6 EG R1      0-99
+  1                R2              OP6 EG R2      0-99
+  2                R3              OP6 EG R3      0-99
+  3                R4              OP6 EG R4      0-99
+  4                L1              OP6 EG L1      0-99
+  5                L2              OP6 EG L2      0-99
+  6                L3              OP6 EG L3      0-99
+  7                L4              OP6 EG L4      0-99
+  8                BP              LEV SCL BRK PT 0-99
+  9                LD              SCL LEFT DEPTH 0-99
+ 10                RD              SCL RGHT DEPTH 0-99
+ 11    0   0   0 |  RC   |   LC  | SCL RGHT CURVE 0-3   SCL LEFT CURVE 0-3
+ 12  |      DET      |     RS    | OSC DETUNE     0-14  OSC RATE SCALE 0-7
+ 13    0   0 |    KVS    |  AMS  | KEY VEL SENS   0-7   AMP MOD SENS   0-3
+ 14                OL              OP6 OUTPUT LEV 0-99
+ 15    0 |         FC        | M | FREQ COARSE    0-31  OSC MODE       0-1
+ 16                FF              FREQ FINE      0-99
+ 17 \
+  |  > these 17 bytes for OSC 5
+ 33 /
+ 34 \
+  |  > these 17 bytes for OSC 4
+ 50 /
+ 51 \
+  |  > these 17 bytes for OSC 3
+ 67 /
+ 68 \
+  |  > these 17 bytes for OSC 2
+ 84 /
+ 85 \
+  |  > these 17 bytes for OSC 1
+101 /
+
+byte             bit #
+ #     6   5   4   3   2   1   0   param A       range  param B       range
+----  --- --- --- --- --- --- ---  ------------  -----  ------------  -----
+102               PR1              PITCH EG R1   0-99
+103               PR2              PITCH EG R2   0-99
+104               PR3              PITCH EG R3   0-99
+105               PR4              PITCH EG R4   0-99
+106               PL1              PITCH EG L1   0-99
+107               PL2              PITCH EG L2   0-99
+108               PL3              PITCH EG L3   0-99
+109               PL4              PITCH EG L4   0-99
+110    0   0 |        ALG        | ALGORITHM     0-31
+111    0   0   0 |OKS|    FB     | OSC KEY SYNC  0-1    FEEDBACK      0-7
+112               LFS              LFO SPEED     0-99
+113               LFD              LFO DELAY     0-99
+114               LPMD             LF PT MOD DEP 0-99
+115               LAMD             LF AM MOD DEP 0-99
+116  |  LPMS     |    LFW    |LKS| LF PT MOD SNS 0-7   WAVE 0-5,  SYNC 0-1
+117              TRNSP             TRANSPOSE     0-48
+118          NAME CHAR 1           VOICE NAME 1  ASCII
+119          NAME CHAR 2           VOICE NAME 2  ASCII
+120          NAME CHAR 3           VOICE NAME 3  ASCII
+121          NAME CHAR 4           VOICE NAME 4  ASCII
+122          NAME CHAR 5           VOICE NAME 5  ASCII
+123          NAME CHAR 6           VOICE NAME 6  ASCII
+124          NAME CHAR 7           VOICE NAME 7  ASCII
+125          NAME CHAR 8           VOICE NAME 8  ASCII
+126          NAME CHAR 9           VOICE NAME 9  ASCII
+127          NAME CHAR 10          VOICE NAME 10 ASCII
+'''
+
 
 class DXDataset(dgl.data.DGLDataset):
+    """ The basic DGL dataset for creating graph datasets.
+        This class defines a basic template class for DGL Dataset.
+        The following steps will be executed automatically:
+
+          1. Check whether there is a dataset cache on disk
+             (already processed and stored on the disk) by
+             invoking ``has_cache()``. If true, goto 5.
+          2. Call ``download()`` to download the data.
+          3. Call ``process()`` to process the data.
+          4. Call ``save()`` to save the processed dataset on disk and goto 6.
+          5. Call ``load()`` to load the processed dataset from disk.
+          6. Done.
+
+        Users can overwite these functions with their
+        own data processing logic.
+
+        Parameters
+        ----------
+        name : str
+            Name of the dataset
+        url : str
+            Url to download the raw dataset
+        raw_dir : str
+            Specifying the directory that will store the
+            downloaded data or the directory that
+            already stores the input data.
+            Default: ~/.dgl/
+        save_dir : str
+            Directory to save the processed dataset.
+            Default: same as raw_dir
+        hash_key : tuple
+            A tuple of values as the input for the hash function.
+            Users can distinguish instances (and their caches on the disk)
+            from the same dataset class by comparing the hash values.
+            Default: (), the corresponding hash value is ``'f9065fa7'``.
+        force_reload : bool
+            Whether to reload the dataset. Default: False
+        verbose : bool
+            Whether to print out progress information
+
+        Attributes
+        ----------
+        url : str
+            The URL to download the dataset
+        name : str
+            The dataset name
+        raw_dir : str
+            Raw file directory contains the input data folder
+        raw_path : str
+            Directory contains the input data files.
+            Default : ``os.path.join(self.raw_dir, self.name)``
+        save_dir : str
+            Directory to save the processed dataset
+        save_path : str
+            File path to save the processed dataset
+        verbose : bool
+            Whether to print information
+        hash : str
+            Hash value for the dataset and the setting.
+        """
+
     def __init__(self, raw_dir=None, save_dir=None):
         self.DX_ALGO = {0: ([1, 2, 3, 4, 5, 6, 6], [0, 1, 0, 3, 4, 5, 6]),
                         1: ([1, 2, 2, 3, 4, 5, 6], [0, 1, 2, 0, 3, 4, 5]),
@@ -43,33 +172,129 @@ class DXDataset(dgl.data.DGLDataset):
         super().__init__(name='DXDataset.bin', raw_dir=raw_dir, save_dir=save_dir)
 
     def _make_graph(self, pz):
-        g = dgl.graph(self.DX_ALGO[pz[110].item()])  # edges
-
         def parse_op(idx):
             i = (6 - idx) * 17
-            envelop = pz[i:i + 8] * 0.01  # 0...99 scale to 0.00...0.99
-            gain = pz[i + 14] * 0.01  # 0.00...0.99
-            mode = pz[i + 15] % 2  # boolean
-            coarse = torch.floor(pz[i + 15] * 0.5)  # 0...31
-            fine = pz[i + 16]  # 0...99
-            tune = torch.floor(pz[i + 12] / 8) / 15  # 0...14/15
-            if mode == 0:  # ratio mode
-                if coarse == 0:
-                    coarse = torch.tensor(0.5)  # ratio=0.5 when coarse=0, as DX's design
-                freq_add = coarse * (1 + fine * 0.01)  # 0.5...61.69
-                freq = torch.log(freq_add * 2) / torch.log(torch.tensor(128.))  # log normalization
-            else:  # fixed mode
-                freq = (coarse % 4 + fine * 0.01) / 4  # already log as DX's design
-            op_params = torch.cat([gain.unsqueeze(0),
-                                   envelop,
-                                   mode.unsqueeze(0),
-                                   freq.unsqueeze(0),
-                                   tune.unsqueeze(0),
-                                   ])
-            return op_params
 
-        pz_params = torch.stack([parse_op(idx) for idx in range(1, 7)])  # [6_operators, 12_params]
-        g.ndata['params'] = torch.cat([torch.zeros(1, 12), pz_params])  # features zero-padded for node_0
+            env = torch.clamp(pz[i:i + 8], 0, 99)  # r1...r4,l1...l4
+
+            bp = torch.clamp(pz[i + 8], 0, 99)  # breakpoint
+            ld = torch.clamp(pz[i + 9], 0, 99)  # left depth
+            rd = torch.clamp(pz[i + 10], 0, 99)  # right depth
+
+            rc = torch.floor(pz[i + 11] / 4) % 4  # right 4 curves
+            lc = pz[i + 11] % 4  # left 4 curves
+
+            det = torch.clamp(torch.floor(pz[i + 12] / 8), 0, 14)  # detune
+            rs = pz[i + 12] % 8  # rate scale
+
+            kvs = torch.floor(pz[i + 13] / 4) % 8  # keyboard velocity sensitivity
+            ams = pz[i + 13] % 4  # amplitude modulation sensitivity
+
+            lev = torch.clamp(pz[i + 14], 0, 99)  # output level
+
+            fc = torch.floor(pz[i + 15] / 2) % 32  # coarse frequency
+            mode = pz[i + 15] % 2  # ratio / fixed frequency mode, boolean
+            if mode == 1:
+                fc = fc % 4
+
+            ff = torch.clamp(pz[i + 16], 0, 99)  # fine frequency
+
+            params_op = torch.cat([lev.unsqueeze(0),  # 0
+                                   env,  # 1...8
+                                   bp.unsqueeze(0),  # 9
+                                   ld.unsqueeze(0),  # 10
+                                   rd.unsqueeze(0),  # 11
+                                   ff.unsqueeze(0),  # 12
+                                   ams.unsqueeze(0),  # 13 - 3 max
+                                   kvs.unsqueeze(0),  # 14 - 7 max
+                                   rs.unsqueeze(0),  # 15 - 7 max
+                                   det.unsqueeze(0),  # 16 - 14 max
+                                   fc.unsqueeze(0),  # 17 - 31 or 3 max
+
+                                   mode.unsqueeze(0),  # 18 - boolean
+
+                                   lc.unsqueeze(0),  # 19 - 4 curves
+                                   rc.unsqueeze(0),  # 20 - 4 curves
+                                   ])
+
+            # X_op = torch.cat([params_op[:19],
+            #                   F.one_hot(lc.long(), 4),  # 19...22 - 4 curves
+            #                   F.one_hot(rc.long(), 4),  # 23...26 - 4 curves
+            #                   ])
+
+            X_op = torch.cat([params_op[:13] / 100,  # normalization
+                              params_op[13].unsqueeze(0) / 4,
+                              params_op[14:16] / 8,
+                              params_op[16].unsqueeze(0) / 15,
+                              params_op[17].unsqueeze(0) / 32,
+                              params_op[18].unsqueeze(0),
+                              F.one_hot(lc.long(), 4),  # 19...22 - 4 curves
+                              F.one_hot(rc.long(), 4),  # 23...26 - 4 curves
+                              ])
+
+            return params_op, X_op
+
+        def parse_global():
+            p_env = torch.clamp(pz[102:110], 0, 99)  # r1...r4,l1...l4
+            alg = pz[110] % 32  # 32 classes
+
+            oks = torch.floor(pz[111] / 8) % 2  # osc keyboard sync, boolean
+            fb = pz[111] % 8  # feedback
+
+            lfs = torch.clamp(pz[112], 0, 99)  # lfo speed
+            lfd = torch.clamp(pz[113], 0, 99)  # lfo delay
+            lpmd = torch.clamp(pz[114], 0, 99)  # lfo pitch mod depth
+            lamd = torch.clamp(pz[115], 0, 99)  # lfo amplitude mod depth
+
+            lpms = torch.floor(pz[116] / 16)  # lfo pitch mod sensitivity
+            lfw = torch.clamp(torch.floor(pz[116] / 2) % 8, 0, 5)  # lfo 5 waveforms
+            lks = pz[116] % 2  # lfo keyboard sync, boolean
+
+            tsp = torch.clamp(pz[117], 0, 48)  # transpose
+
+            params_global = torch.cat([p_env,  # 0...7
+                                       lfs.unsqueeze(0),  # 8
+                                       lfd.unsqueeze(0),  # 9
+                                       lpmd.unsqueeze(0),  # 10
+                                       lamd.unsqueeze(0),  # 11
+                                       fb.unsqueeze(0),  # 12 - 7 max
+                                       lpms.unsqueeze(0),  # 13 - 7 max
+                                       tsp.unsqueeze(0),  # 14 - 48 max
+
+                                       oks.unsqueeze(0),  # 15 - boolean
+                                       lks.unsqueeze(0),  # 16 - boolean
+
+                                       lfw.unsqueeze(0),  # 17 - 6 waveforms
+
+                                       alg.unsqueeze(0),  # 18 - 32 classes
+                                       torch.zeros(2),  # 19...20, padding
+                                       ])
+
+            # X_global = torch.cat([params_global[:17],
+            #                       F.one_hot(lfw.long(), 6),  # 17...22 - 6 waveforms
+            #                       torch.zeros(4),  # 23...26 - padding
+            #                       ])
+
+            X_global = torch.cat([params_global[:12] / 100,  # normalization
+                                  params_global[12:14] / 8,
+                                  params_global[14].unsqueeze(0) / 49,
+                                  params_global[15:17],
+                                  F.one_hot(lfw.long(), 6),  # 17...22 - 6 waveforms
+                                  torch.zeros(4),  # 23...26 - padding
+                                  ])
+
+            return params_global, X_global
+
+        params_6_ops = torch.stack([parse_op(idx)[0] for idx in range(1, 7)])  # [6_operators, 21_params]
+        params_global = parse_global()[0].unsqueeze(0)  # [1, 21]
+
+        X_6_ops = torch.stack([parse_op(idx)[1] for idx in range(1, 7)])  # [6_operators, 28]
+        X_global = parse_global()[1].unsqueeze(0)  # [1, 28]
+
+        g = dgl.graph(self.DX_ALGO[pz[110].item()])  # make graph from edges
+        g.ndata['params'] = torch.cat([params_global, params_6_ops])  # data for viewing
+        g.ndata['X'] = torch.cat([X_global, X_6_ops])  # data for training
+
         return g
 
     def _read_syx(self, file):
@@ -140,4 +365,3 @@ class DXDataset(dgl.data.DGLDataset):
 if __name__ == '__main__':
     dataset = DXDataset(raw_dir='DX_data')
     G = dataset[0]
-    # dataset.to_presets(g)

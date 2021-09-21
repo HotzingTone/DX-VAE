@@ -1,9 +1,7 @@
 from dxdata import DXDataset
+# from model import DXVAE
 from model import DXVAE
 import torch
-
-import igraph
-from models import DVAE
 
 # print(model.state_dict().keys(), '\n')
 # optim = torch.optim.SGD(model.parameters(), lr=0.01)
@@ -32,10 +30,12 @@ from models import DVAE
 
 def print_data(G):
     for g in G:
-        print(g.ndata['params'])
+        # print(g.ndata['params'])
+        print(g.ndata['X'])
         # print(g.ndata['params_1hot'].size())
         print(g.edges())
 
+# from models import DVAE
 # def test_DVAE():
 #     g = igraph.Graph(directed=True)
 #     g.add_vertices(5)
@@ -52,22 +52,28 @@ def print_data(G):
 
 
 if __name__ == '__main__':
-    DXDataset(raw_dir='DX_data')
-    G = DXDataset(raw_dir='DX_data')[0]
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # DXDataset(raw_dir='DX_data')
+    G = [g.to(device) for g in DXDataset(raw_dir='DX_data')[0]]
 
+    checkpoint = 'test_new_0920'
+    # model = DXVAE(checkpoint=checkpoint)
     model = DXVAE()
-    PATH = 'test'
-    model.load_state_dict(torch.load(PATH))
-    model.train(G, 500)
-    torch.save(model.state_dict(), PATH)
+    model.to(device)
+    model.train(G, 500, checkpoint=checkpoint)
 
-    # model.forward(G[17:18])
-    # G_gen = model.generate(2)
+    # g = G[13:14]
+    # _, l_x, l_e, kld = model.forward(g)
+    # print(f'lp: {lp:.4f}\tle: {le:.4f}\tkld: {kld:.4f}')
 
-    g = G[17:18]
-    print_data(g)
-    g_re = model.encode_decode(g)  # try stochastic=True
-    print_data(g_re)
+    # print(model.encode(g).loc)
+
+    # G_gen = model.generate(1)
+    # print_data(G_gen)
+
+    # print_data(G)
+    # g_re = model.encode_decode(g)  # try stochastic=True
+    # print_data(g_re)
 
     # to_syx(G_re)
 
@@ -76,11 +82,11 @@ if __name__ == '__main__':
 #  consider dgl.reorder_graph
 #  convert back to dx presets
 #  + stochastic (logit/prob)
-#  RNN for env?
-#  RNN for mode->coarse->fine?
-#  freq_mode as gate?
+#  RNN for param decoding + DAGNN for encoding
+#  decode solidify params
 #  levels for edge weights
 #  param layer separation
 #  training plot
 #  try more layers
-#  try LSTM
+#  try one decode unit for one frontier (needs dgl.reorder_graph)
+#  all integer params!
