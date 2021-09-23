@@ -63,4 +63,3 @@ if __name__ == '__main__':
 #  consider dgl.reorder_graph
 #  stochastic
 #  levels for edge weights
-#  training plot
