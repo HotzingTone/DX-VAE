@@ -21,10 +21,10 @@ def train_on(G, chk='auto.chk', epochs=500, size_batch=32, lr=0.001, w_env=2, w_
     model.train(G, epochs, size_batch, lr, chk, w_env, w_frq, w_kld)
 
 
-def decode_test(G_en, chk='auto.chk', stochastic=False, print=True):
+def decode_test(G_en, chk='auto.chk', stochastic=False, printout=True):
     model = DXVAE(checkpoint=chk)
     G_de = model.encode_decode(G_en, stochastic=stochastic)
-    if print:
+    if printout:
         print('[ Encode ]')
         print_data(G_en)
         print('[ Decode ]')
@@ -32,10 +32,10 @@ def decode_test(G_en, chk='auto.chk', stochastic=False, print=True):
     return(G_de)
 
 
-def generate_test(n=1, chk='auto.chk', print=True):
+def generate_test(n=1, chk='auto.chk', printout=True):
     model = DXVAE(checkpoint=chk)
     G_gen = model.generate(n)
-    if print:
+    if printout:
         print('[ Generate ]')
         print_data(G_gen)
     return(G_gen)
@@ -67,15 +67,11 @@ if __name__ == '__main__':
     # decode_test(G[12:13], chk=chk)
 
     # randomly sample a graph
-    # generate_test(1, chk=chk)
+    generate_test(1, chk=chk)
 
     # a single pass of graphs to see the loss
     # forward_test(G[15:16], chk=chk)
 
     # convert a batch of 32 graphs into a syx file
-    graph_to_syx(generate_test(32, chk=chk, print=False))
+    # graph_to_syx(generate_test(32, chk=chk, printout=False))
 
-# Todo:
-#  consider dgl.reorder_graph
-#  stochastic
-#  levels for edge weights
