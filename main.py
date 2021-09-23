@@ -50,14 +50,30 @@ def forward_test(G, chk='auto.chk'):
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     dataset = DXDataset(raw_dir='DX_data')
+
+    # get graphs from the dataset
     G = [g.to(device) for g in dataset[0]]
+
+    # checkpoint path
     chk = 'checkpoints/dx_1024.chk'
+
+    # train from scratch and save the checkpoint
     # train_new(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
-    train_on(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
+
+    # load a saved checkpoint and continue training
+    # train_on(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
+
+    # encode graphs and then decode
     # decode_test(G[12:13], chk=chk)
+
+    # randomly sample a graph
     # generate_test(1, chk=chk)
+
+    # a single pass of graphs to see the loss
     # forward_test(G[15:16], chk=chk)
-    # graph_to_syx(generate_test(32, chk=chk, print=False))
+
+    # convert a batch of 32 graphs into a syx file
+    graph_to_syx(generate_test(32, chk=chk, print=False))
 
 # Todo:
 #  consider dgl.reorder_graph
