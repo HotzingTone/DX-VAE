@@ -8,7 +8,7 @@ import dgl
 
 
 class DXVAE(nn.Module):
-    def __init__(self, n_nodes=7, n_params=21, size_X=27, size_X0=23, size_H=512, size_Z=128, checkpoint=None):
+    def __init__(self, n_nodes=7, n_params=21, size_X=27, size_X0=23, size_H=1024, size_Z=256, checkpoint=None):
         super().__init__()
         self.device = ('cuda' if torch.cuda.is_available() else 'cpu')
         self.n_nodes = n_nodes  # total number of nodes

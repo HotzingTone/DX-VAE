@@ -1,8 +1,6 @@
-from dxdata import DXDataset
+from dxdata import DXDataset, graph_to_syx
 from model import DXVAE
 import torch
-from torch.utils.data import Dataset, DataLoader
-
 
 
 def print_data(G):
@@ -23,20 +21,24 @@ def train_on(G, chk='auto.chk', epochs=500, size_batch=32, lr=0.001, w_env=2, w_
     model.train(G, epochs, size_batch, lr, chk, w_env, w_frq, w_kld)
 
 
-def decode_test(G_en, chk='auto.chk', stochastic=False):
+def decode_test(G_en, chk='auto.chk', stochastic=False, print=True):
     model = DXVAE(checkpoint=chk)
     G_de = model.encode_decode(G_en, stochastic=stochastic)
-    print('[ Encode ]')
-    print_data(G_en)
-    print('[ Decode ]')
-    print_data(G_de)
+    if print:
+        print('[ Encode ]')
+        print_data(G_en)
+        print('[ Decode ]')
+        print_data(G_de)
+    return(G_de)
 
 
-def generate_test(n=1, chk='auto.chk'):
+def generate_test(n=1, chk='auto.chk', print=True):
     model = DXVAE(checkpoint=chk)
     G_gen = model.generate(n)
-    print('[ Generate ]')
-    print_data(G_gen)
+    if print:
+        print('[ Generate ]')
+        print_data(G_gen)
+    return(G_gen)
 
 
 def forward_test(G, chk='auto.chk'):
@@ -49,18 +51,17 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     dataset = DXDataset(raw_dir='DX_data')
     G = [g.to(device) for g in dataset[0]]
-    chk = 'checkpoints/dx_1024.chk'
-    # train_new(G, chk=chk, epochs=100)
-    train_on(G, chk=chk, epochs=100)
-    # decode_test(G[10:11], chk=chk)
+    chk = 'checkpoints/dx_1024_big.chk'
+    # train_new(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
+    # train_on(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
+    # decode_test(G[12:13], chk=chk)
     # generate_test(1, chk=chk)
     # forward_test(G[15:16], chk=chk)
+    graph_to_syx(generate_test(32, chk=chk, print=False))
 
-    # to_syx(G_gen)
 
 # Todo:
 #  consider dgl.reorder_graph
-#  convert back to dx presets
-#  + stochastic
+#  stochastic
 #  levels for edge weights
 #  training plot
