@@ -1,8 +1,8 @@
 DX-VAE is a VAE model that learns the parameters of the Dexed FM synth using Graph Learning techniques.
-It sees a Dexed patch as a Computational Graph where the FM oscillators are the interconnected nodes of the graph.
+It sees a Dexed patch as a Computational Graph whose nodes are the interconnected FM operations.
 
 DX-VAE is not a big model, and hasn't been trained on a very large dataset for the time being.
-It doesn't aim to become a full-fledged product for generating Dexed pathes,
+It doesn't aim to become a full-fledged product for generating Dexed patches,
 but to test the idea of Computational Graph Learning being a method of generating DSP-based sounds.
 
 So far, the results look just OK in proving the concept.
