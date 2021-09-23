@@ -51,14 +51,13 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     dataset = DXDataset(raw_dir='DX_data')
     G = [g.to(device) for g in dataset[0]]
-    chk = 'checkpoints/dx_1024_big.chk'
+    chk = 'checkpoints/dx_1024.chk'
     # train_new(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
-    # train_on(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
+    train_on(G, chk=chk, epochs=50, w_env=3, w_frq=6, w_kld=0.002)
     # decode_test(G[12:13], chk=chk)
     # generate_test(1, chk=chk)
     # forward_test(G[15:16], chk=chk)
-    graph_to_syx(generate_test(32, chk=chk, print=False))
-
+    # graph_to_syx(generate_test(32, chk=chk, print=False))
 
 # Todo:
 #  consider dgl.reorder_graph
