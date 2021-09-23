@@ -338,42 +338,63 @@ class DXDataset(dgl.data.DGLDataset):
         return os.path.exists(self.save_path)
 
 
-# def to_syx(G, file='gen_patch.syx'):
-#     data_pz_tail = [99, 99, 99, 99,
-#                     50, 50, 50, 50,
-#                     0, 15, 0, 0, 0,
-#                     0, 1, 24, 0, 0,
-#                     0, 0, 0, 0,
-#                     0, 0, 0, 0]
-#     data_head = [67, 0, 9, 32, 0]
-#     data_tail = [88]
-#     data_32pz = []
-#     for i, g in enumerate(G):
-#         params_graph = g.ndata['params']
-#         params_pz = []
-#         for idx in range(6, 0, -1):  # todo make a clamp
-#             params_node = params_graph[idx]
-#
-#             mode_op = params_node[0].int().tolist()
-#             coarse_op = params_node[1].int().tolist()
-#             fine_op = params_node[2].int().tolist()
-#             tune_op = params_node[3].int().tolist()
-#             env_op = params_node[4:12].int().tolist()
-#             level_op = params_node[12].int().tolist()
-#             params_op = env_op + [0, 0, 0, 0] + \
-#                         [tune_op * 8] + [0] + \
-#                         [level_op] + \
-#                         [coarse_op * 2 + mode_op] + \
-#                         [fine_op]
-#             params_pz.extend(params_op)
-#
-#         data_pz = params_pz + data_pz_tail
-#         data_32pz.extend(data_pz)
-#
-#     data = data_head + data_32pz + data_tail
-#     msg = mido.Message('sysex', data=data)
-#
-#     mido.write_syx_file(file, [msg])
+def graph_to_syx(G, file='gen_patch.syx'):
+    data_name = [68, 88, 45, 86, 65, 69, 46, 46, 46, 46]
+    data_head = [67, 0, 9, 32, 0]
+    data_tail = [88]
+    data_32pz = []
+
+    for i, g in enumerate(G):
+        pg = g.ndata['params'].int().tolist()
+        data_pz = []
+        for idx in range(6, 0, -1):
+            pi = pg[idx]
+
+            lev = pi[0]
+            env = pi[1:9]
+            fc = pi[9]
+            ff = pi[10]
+            det = pi[11]
+            bp = pi[12]
+            ld = pi[13]
+            rd = pi[14]
+            ams = pi[15]
+            kvs = pi[16]
+            rs = pi[17]
+            mode = pi[18]
+            lc = pi[19]
+            rc = pi[20]
+
+            data_op = env + [bp] + [ld] + [rd] + [rc * 4 + lc] + [det * 8 + rs] \
+                      + [kvs * 4 + ams] + [lev] + [fc * 2 + mode] + [ff]
+            data_pz.extend(data_op)
+
+        p0 = pg[0]
+
+        p_env = p0[0:8]
+        tsp = p0[8]
+        lfs = p0[9]
+        lfd = p0[10]
+        lpmd = p0[11]
+        lamd = p0[12]
+        fb = p0[13]
+        lpms = p0[14]
+        oks = p0[15]
+        lks = p0[16]
+        lfw = p0[17]
+        alg = p0[18]
+
+        data_global = p_env + [alg] + [oks * 8 + fb] + [lfs] + [lfd] \
+                      + [lpmd] + [lamd] + [lpms * 16 + lfw * 2 + lks] + [tsp] \
+                      + data_name
+
+        data_pz.extend(data_global)
+        data_32pz.extend(data_pz)
+
+    data = data_head + data_32pz + data_tail
+    msg = mido.Message('sysex', data=data)
+
+    mido.write_syx_file(file, [msg])
 
 
 if __name__ == '__main__':
