@@ -1,92 +1,66 @@
 from dxdata import DXDataset
-# from model import DXVAE
 from model import DXVAE
 import torch
+from torch.utils.data import Dataset, DataLoader
 
-# print(model.state_dict().keys(), '\n')
-# optim = torch.optim.SGD(model.parameters(), lr=0.01)
-# print(optim.state_dict())
 
-# checkpoint = {
-#     'epoch': 90,
-#     'model_state': model.state_dict(),
-#     'optim_state': optim.state_dict()
-# }
-# torch.save(checkpoint, 'checkpoint')
-# checkpoint = torch.load('checkpoint')
-# model.load_state_dict(checkpoint['model_state'])
-# optim.load_state_dict(checkpoint['optim_state'])
-
-# save on cpu, load on gpu
-# torch.save(model.state_dict(), PATH)
-# device = torch.device('cuda')
-# model.load_state_dict(torch.load(PATH, map_location='cuda:0'))  # if using a new device
-# model.to(device)
-
-# for p in model.parameters():
-# print(p.size())
-
-# model.eval()
 
 def print_data(G):
-    for g in G:
-        # print(g.ndata['params'])
-        print(g.ndata['X'])
-        # print(g.ndata['params_1hot'].size())
-        print(g.edges())
+    for idx, g in enumerate(G):
+        print(f'#{idx} Params:\n', g.ndata['params'])
+        print(f'#{idx} Edges:\n', g.edges(), '\n')
 
-# from models import DVAE
-# def test_DVAE():
-#     g = igraph.Graph(directed=True)
-#     g.add_vertices(5)
-#     g.vs['type'] = [0,1,2,3,2]
-#     g.add_edges([(2, 3), (1, 3), (0, 1), (3, 4), (0, 4)])
-#
-#     g1 = igraph.Graph(directed=True)
-#     g1.add_vertices(5)
-#     g1.vs['type'] = [0,3,2,2,1]
-#     g1.add_edges([(2, 3), (1, 3), (0, 1), (3, 4), (0, 4)])
-#
-#     m = DVAE(max_n=5, nvt=4, START_TYPE=0, END_TYPE=3, hs=6, nz=2)
-#     print(m.forward([g, g1]))
+
+def train_new(G, chk='auto.chk', epochs=500, size_batch=32, lr=0.001, w_env=2, w_frq=5, w_kld=0.01):
+    model = DXVAE()
+    model.to(device)
+    model.train(G, epochs, size_batch, lr, chk, w_env, w_frq, w_kld)
+
+
+def train_on(G, chk='auto.chk', epochs=500, size_batch=32, lr=0.001, w_env=2, w_frq=5, w_kld=0.01):
+    model = DXVAE(checkpoint=chk)
+    model.to(device)
+    model.train(G, epochs, size_batch, lr, chk, w_env, w_frq, w_kld)
+
+
+def decode_test(G_en, chk='auto.chk', stochastic=False):
+    model = DXVAE(checkpoint=chk)
+    G_de = model.encode_decode(G_en, stochastic=stochastic)
+    print('[ Encode ]')
+    print_data(G_en)
+    print('[ Decode ]')
+    print_data(G_de)
+
+
+def generate_test(n=1, chk='auto.chk'):
+    model = DXVAE(checkpoint=chk)
+    G_gen = model.generate(n)
+    print('[ Generate ]')
+    print_data(G_gen)
+
+
+def forward_test(G, chk='auto.chk'):
+    model = DXVAE(checkpoint=chk)
+    loss, lx0, lxi, le, kld = model.forward(G)
+    print(f'loss: {loss:.4f}\tx0: {lx0:.4f}\txi: {lxi:.4f}\te: {le:.4f}\tkld: {kld:.4f}')
 
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # DXDataset(raw_dir='DX_data')
-    G = [g.to(device) for g in DXDataset(raw_dir='DX_data')[0]]
+    dataset = DXDataset(raw_dir='DX_data')
+    G = [g.to(device) for g in dataset[0]]
+    chk = 'checkpoints/dx_1024.chk'
+    # train_new(G, chk=chk, epochs=100)
+    train_on(G, chk=chk, epochs=100)
+    # decode_test(G[10:11], chk=chk)
+    # generate_test(1, chk=chk)
+    # forward_test(G[15:16], chk=chk)
 
-    checkpoint = 'test_new_0920'
-    # model = DXVAE(checkpoint=checkpoint)
-    model = DXVAE()
-    model.to(device)
-    model.train(G, 500, checkpoint=checkpoint)
-
-    # g = G[13:14]
-    # _, l_x, l_e, kld = model.forward(g)
-    # print(f'lp: {lp:.4f}\tle: {le:.4f}\tkld: {kld:.4f}')
-
-    # print(model.encode(g).loc)
-
-    # G_gen = model.generate(1)
-    # print_data(G_gen)
-
-    # print_data(G)
-    # g_re = model.encode_decode(g)  # try stochastic=True
-    # print_data(g_re)
-
-    # to_syx(G_re)
-
+    # to_syx(G_gen)
 
 # Todo:
 #  consider dgl.reorder_graph
 #  convert back to dx presets
-#  + stochastic (logit/prob)
-#  RNN for param decoding + DAGNN for encoding
-#  decode solidify params
+#  + stochastic
 #  levels for edge weights
-#  param layer separation
 #  training plot
-#  try more layers
-#  try one decode unit for one frontier (needs dgl.reorder_graph)
-#  all integer params!
