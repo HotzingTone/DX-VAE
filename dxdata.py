@@ -194,45 +194,54 @@ class DXDataset(dgl.data.DGLDataset):
 
             fc = torch.floor(pz[i + 15] / 2) % 32  # coarse frequency
             mode = pz[i + 15] % 2  # ratio / fixed frequency mode, boolean
-            if mode == 1:
-                fc = fc % 4
 
             ff = torch.clamp(pz[i + 16], 0, 99)  # fine frequency
 
-            params_op = torch.cat([lev.unsqueeze(0),  # 0
-                                   env,  # 1...8
-                                   bp.unsqueeze(0),  # 9
-                                   ld.unsqueeze(0),  # 10
-                                   rd.unsqueeze(0),  # 11
-                                   ff.unsqueeze(0),  # 12
-                                   ams.unsqueeze(0),  # 13 - 3 max
-                                   kvs.unsqueeze(0),  # 14 - 7 max
-                                   rs.unsqueeze(0),  # 15 - 7 max
-                                   det.unsqueeze(0),  # 16 - 14 max
-                                   fc.unsqueeze(0),  # 17 - 31 or 3 max
+            if mode == 0:
+                fc_x = (fc + 1).log() / (torch.tensor(32.)).log()
+                ff_x = (ff + 1).log() / (torch.tensor(100.)).log()
+            else:
+                fc = fc % 4
+                fc_x = fc / 3
+                ff_x = ff / 99
 
-                                   mode.unsqueeze(0),  # 18 - boolean
+            pi = torch.cat([lev.unsqueeze(0),  # 0
+                            env,  # 1...8
+                            fc.unsqueeze(0),  # 9 - 31 or 3 max
+                            ff.unsqueeze(0),  # 10
+                            det.unsqueeze(0),  # 11 - 14 max
+                            bp.unsqueeze(0),  # 12
+                            ld.unsqueeze(0),  # 13
+                            rd.unsqueeze(0),  # 14
+                            ams.unsqueeze(0),  # 15 - 3 max
+                            kvs.unsqueeze(0),  # 16 - 7 max
+                            rs.unsqueeze(0),  # 17 - 7 max
 
-                                   lc.unsqueeze(0),  # 19 - 4 curves
-                                   rc.unsqueeze(0),  # 20 - 4 curves
-                                   ])
+                            mode.unsqueeze(0),  # 18 - boolean
 
-            # X_op = torch.cat([params_op[:19],
-            #                   F.one_hot(lc.long(), 4),  # 19...22 - 4 curves
-            #                   F.one_hot(rc.long(), 4),  # 23...26 - 4 curves
-            #                   ])
+                            lc.unsqueeze(0),  # 19 - 4 curves
+                            rc.unsqueeze(0),  # 20 - 4 curves
+                            ])
 
-            X_op = torch.cat([params_op[:13] / 100,  # normalization
-                              params_op[13].unsqueeze(0) / 4,
-                              params_op[14:16] / 8,
-                              params_op[16].unsqueeze(0) / 15,
-                              params_op[17].unsqueeze(0) / 32,
-                              params_op[18].unsqueeze(0),
-                              F.one_hot(lc.long(), 4),  # 19...22 - 4 curves
-                              F.one_hot(rc.long(), 4),  # 23...26 - 4 curves
-                              ])
+            Xi = torch.cat([lev.unsqueeze(0) / 99,  # 0
+                            env / 99,  # 1...8
+                            fc_x.unsqueeze(0),  # 9
+                            ff_x.unsqueeze(0),  # 10
+                            det.unsqueeze(0) / 14,  # 11 - 14 max
+                            bp.unsqueeze(0) / 99,  # 12
+                            ld.unsqueeze(0) / 99,  # 13
+                            rd.unsqueeze(0) / 99,  # 14
+                            ams.unsqueeze(0) / 3,  # 15 - 3 max
+                            kvs.unsqueeze(0) / 7,  # 16 - 7 max
+                            rs.unsqueeze(0) / 7,  # 17 - 7 max
 
-            return params_op, X_op
+                            mode.unsqueeze(0),  # 18 - boolean
+
+                            F.one_hot(lc.long(), 4),  # 19...22 - 4 curves
+                            F.one_hot(rc.long(), 4),  # 23...26 - 4 curves
+                            ])
+
+            return pi, Xi
 
         def parse_global():
             p_env = torch.clamp(pz[102:110], 0, 99)  # r1...r4,l1...l4
@@ -252,38 +261,43 @@ class DXDataset(dgl.data.DGLDataset):
 
             tsp = torch.clamp(pz[117], 0, 48)  # transpose
 
-            params_global = torch.cat([p_env,  # 0...7
-                                       lfs.unsqueeze(0),  # 8
-                                       lfd.unsqueeze(0),  # 9
-                                       lpmd.unsqueeze(0),  # 10
-                                       lamd.unsqueeze(0),  # 11
-                                       fb.unsqueeze(0),  # 12 - 7 max
-                                       lpms.unsqueeze(0),  # 13 - 7 max
-                                       tsp.unsqueeze(0),  # 14 - 48 max
+            p0 = torch.cat([p_env,  # 0...7
+                            tsp.unsqueeze(0),  # 8 - 48 max
+                            lfs.unsqueeze(0),  # 9
+                            lfd.unsqueeze(0),  # 10
+                            lpmd.unsqueeze(0),  # 11
+                            lamd.unsqueeze(0),  # 12
+                            fb.unsqueeze(0),  # 13 - 7 max
+                            lpms.unsqueeze(0),  # 14 - 7 max
 
-                                       oks.unsqueeze(0),  # 15 - boolean
-                                       lks.unsqueeze(0),  # 16 - boolean
+                            oks.unsqueeze(0),  # 15 - boolean
+                            lks.unsqueeze(0),  # 16 - boolean
 
-                                       lfw.unsqueeze(0),  # 17 - 6 waveforms
+                            lfw.unsqueeze(0),  # 17 - 6 waveforms
 
-                                       alg.unsqueeze(0),  # 18 - 32 classes
-                                       torch.zeros(2),  # 19...20, padding
-                                       ])
+                            alg.unsqueeze(0),  # 18 - 32 classes
 
-            # X_global = torch.cat([params_global[:17],
-            #                       F.one_hot(lfw.long(), 6),  # 17...22 - 6 waveforms
-            #                       torch.zeros(4),  # 23...26 - padding
-            #                       ])
+                            torch.zeros(2),  # 19...20, padding
+                            ])
 
-            X_global = torch.cat([params_global[:12] / 100,  # normalization
-                                  params_global[12:14] / 8,
-                                  params_global[14].unsqueeze(0) / 49,
-                                  params_global[15:17],
-                                  F.one_hot(lfw.long(), 6),  # 17...22 - 6 waveforms
-                                  torch.zeros(4),  # 23...26 - padding
-                                  ])
+            X0 = torch.cat([p_env / 99,  # 0...7
+                            tsp.unsqueeze(0) / 48,  # 8 - 48 max
+                            lfs.unsqueeze(0) / 99,  # 9
+                            lfd.unsqueeze(0) / 99,  # 10
+                            lpmd.unsqueeze(0) / 99,  # 11
+                            lamd.unsqueeze(0) / 99,  # 12
+                            fb.unsqueeze(0) / 7,  # 13 - 7 max
+                            lpms.unsqueeze(0) / 7,  # 14 - 7 max
 
-            return params_global, X_global
+                            oks.unsqueeze(0),  # 15 - boolean
+                            lks.unsqueeze(0),  # 16 - boolean
+
+                            F.one_hot(lfw.long(), 6),  # 17...22 - 6 waveforms
+
+                            torch.zeros(4),  # 23...26 - padding
+                            ])
+
+            return p0, X0
 
         params_6_ops = torch.stack([parse_op(idx)[0] for idx in range(1, 7)])  # [6_operators, 21_params]
         params_global = parse_global()[0].unsqueeze(0)  # [1, 21]
